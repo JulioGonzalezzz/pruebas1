@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Buscar ID's desde Excel</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;500;600&display=swap" rel="stylesheet">
+  <style>
+    .imagen-esquina {
+      position: absolute;
+      top: 10px;
+      right: 60px;
+      width: 300px;
+      height: auto;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: beige;
+      margin: 0;
+      padding: 40px 20px;
+      color: #333;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h1 {
+      color: #00b9b9;
+      font-weight: 600;
+      margin-bottom: 30px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+      padding: 30px;
+      max-width: 800px;
+      width: 100%;
+    }
+
+    input[type="file"], textarea, button {
+      width: 100%;
+      margin: 10px 0;
+      padding: 12px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-family: inherit;
+    }
+
+    textarea {
+      resize: vertical;
+    }
+
+    button {
+      background-color: #00b9b9;
+      color: white;
+      font-weight: bold;
+      border: none;
+      transition: background-color 0.3s ease;
+    }
+
+    button:hover {
+      background-color: #009edb;
+    }
+
+    .message {
+      margin: 15px 0;
+      font-style: italic;
+      color: #666;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      font-size: 15px;
+    }
+
+    th, td {
+      padding: 10px;
+      text-align: left;
+      border-bottom: 1px solid #eaeaea;
+    }
+
+    th {
+      background-color: #f0f8ff;
+      color: #00b9b9;
+    }
+
+    @media (max-width: 600px) {
+      .container {
+        padding: 20px;
+      }
+
+      table, th, td {
+        font-size: 13px;
+      }
+    }
+  </style>
+</head>
+<body>
+<img src="logo.png" alt="Icono" class="imagen-esquina">
+<h1>Buscar ID's en archivo Excel</h1>
+
+<div class="container"> 
+  <input type="file" id="archivoExcel" accept=".xlsx, .xls">
+  <textarea id="entradaIds" rows="5" placeholder="Pega aquí varios ID's separados por coma, espacio o salto de línea..."></textarea>
+  <button onclick="buscarIds()">Buscar</button>
+  <div class="message" id="mensaje">Sube un archivo y escribe los ID's para buscar.</div>
+  <div id="tablaResultados"></div>
+</div>
+
+<script>
+  let datosExcel = [];
+
+  document.getElementById('archivoExcel').addEventListener('change', function (e) {
+    const archivo = e.target.files[0];
+    if (!archivo) return;
+
+    const lector = new FileReader();
+    lector.onload = function (e) {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+
+      const hoja = workbook.Sheets[workbook.SheetNames[0]];
+      datosExcel = XLSX.utils.sheet_to_json(hoja, { header: 1 });
+
+      document.getElementById('mensaje').textContent = 'Archivo cargado. Ahora ingresa los ID\'s para buscar.';
+    };
+
+    lector.readAsArrayBuffer(archivo);
+  });
+
+  function buscarIds() {
+    const entrada = document.getElementById('entradaIds').value;
+    const tablaDiv = document.getElementById('tablaResultados');
+    tablaDiv.innerHTML = '';
+
+    if (!entrada || datosExcel.length === 0) {
+      alert("Asegúrate de subir un archivo y escribir los ID's.");
+      return;
+    }
+
+    const ids = entrada
+      .split(/[\s,]+/)
+      .map(id => id.trim())
+      .filter(id => id.length > 0);
+
+    const resultados = [];
+
+    datosExcel.forEach(fila => {
+      const id = String(fila[2] || '').trim(); // Columna C
+      const colG = fila[6] || '';              // Columna G
+      const colI = fila[8] || '';              // Columna I
+      const colJ = fila[9] || '';              // Columna J
+
+      if (ids.includes(id)) {
+        resultados.push({ id, colG, colI, colJ });
+      }
+    });
+
+    if (resultados.length === 0) {
+      document.getElementById('mensaje').textContent = 'No se encontraron coincidencias.';
+      return;
+    }
+
+    resultados.sort((a, b) => a.id.localeCompare(b.id));
+
+    let tablaHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>ID (Pluv)</th>
+            <th>Columna G</th>
+            <th>Nombre</th>
+            <th>Coordenada</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    resultados.forEach(({ id, colG, colI, colJ }) => {
+      tablaHTML += `
+        <tr>
+          <td>${id}</td>
+          <td>${colG}</td>
+          <td>${colI}</td>
+          <td>${colJ}</td>
+        </tr>
+      `;
+    });
+
+    tablaHTML += `
+        </tbody>
+      </table>
+      <button onclick="copiarTabla()" style="margin-top:15px;">Copiar resultados</button>
+    `;
+
+    tablaDiv.innerHTML = tablaHTML;
+
+    document.getElementById('mensaje').textContent = `Se encontraron ${resultados.length} coincidencias.`;
+  }
+
+  function copiarTabla() {
+    const tabla = document.querySelector('#tablaResultados table');
+    if (!tabla) return;
+
+    let texto = '';
+    const filas = tabla.querySelectorAll('tr');
+    filas.forEach(fila => {
+      const celdas = fila.querySelectorAll('th, td');
+      const filaTexto = Array.from(celdas).map(celda => celda.textContent.trim()).join('\t');
+      texto += filaTexto + '\n';
+    });
+
+    const areaTemporal = document.createElement('textarea');
+    areaTemporal.value = texto;
+    document.body.appendChild(areaTemporal);
+    areaTemporal.select();
+    document.execCommand('copy');
+    document.body.removeChild(areaTemporal);
+
+    alert('Resultados copiados al portapapeles.');
+  }
+</script>
+
+</body>
+</html>

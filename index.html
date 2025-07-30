@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>GENERACION DE CODIGO</title>
+  <style>
+    .imagen-esquina {
+      position: absolute;
+      top: 10px;
+      right: 60px;
+      width: 300px;
+      height: auto;
+    }
+    body {
+      font-family: 'Arial', sans-serif;
+      background: beige;
+      color: #00b9b9;
+      padding: 40px;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    h1 {
+      font-size: 28px;
+      color: #00b9b9;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .container {
+      background-color: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      padding: 30px;
+      border-radius: 10px;
+      width: 80%;
+      max-width: 800px;
+      text-align: center;
+    }
+
+    label {
+      font-size: 18px;
+      color: #00b9b9;
+      margin-top: 10px;
+    }
+
+    input[type="file"], 
+    input[type="text"] {
+      padding: 10px;
+      font-size: 16px;
+      margin: 10px 0;
+      width: 80%;
+      max-width: 400px;
+      border-radius: 6px;
+      border: 1px solid #ddd;
+      background-color: #fafafa;
+    }
+
+    input[type="text"]:focus, 
+    input[type="file"]:focus {
+      border-color: #00b9b9;
+      outline: none;
+    }
+
+    button {
+      background-color: #00b9b9;
+      color: white;
+      font-size: 16px;
+      padding: 12px 20px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+      margin: 10px 0;
+    }
+
+    button:hover {
+      background-color: #00b9b9;
+    }
+
+    .list-group {
+      max-height: 200px;
+      overflow-y: auto;
+      list-style-type: none;
+      padding: 0;
+      margin: 10px 0;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      background-color: #fafafa;
+      text-align: left;
+      padding-left: 10px;
+    }
+
+    .list-group-item {
+      padding: 10px;
+      margin: 5px 0;
+      cursor: pointer;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background-color: #fff;
+      transition: background-color 0.3s ease;
+    }
+
+    .list-group-item:hover {
+      background-color: #00b9b9;
+      color: white;
+    }
+
+    pre {
+      background: #f9f9f9;
+      padding: 20px;
+      border-radius: 6px;
+      color: #333;
+      max-height: 300px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      border: 1px solid #ddd;
+    }
+
+    .btn-group {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .btn-group button {
+      width: auto;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+<img src="logo.png" alt="Icono" class="imagen-esquina">
+  <div class="container">
+    <h1>Editor de Archivos TXT</h1>
+
+    <!-- Sección para cargar el primer archivo -->
+    <label for="fileInput1">Cargar el primer archivo .txt</label>
+    <input type="file" id="fileInput1" accept=".txt">
+    
+    <label for="codigoInput">Ingresa el código que deseas buscar:</label>
+    <input type="text" id="codigoInput" placeholder="Código a buscar">
+    
+    <button onclick="buscarCodigo()">Buscar Código</button>
+
+    <!-- Lista de resultados -->
+    <ul id="resultados" class="list-group hidden"></ul>
+
+    <!-- Sección para cargar el segundo archivo -->
+    <div class="hidden" id="fileInput2Container">
+      <label for="fileInput2">Cargar el segundo archivo .txt</label>
+      <input type="file" id="fileInput2" accept=".txt">
+    </div>
+
+    <div class="btn-group">
+      <button id="btnDescargar" class="hidden" onclick="copiarTexto()">Copiar texto modificado</button>
+    </div>
+
+    <h3>Contenido modificado:</h3>
+    <pre id="output">Esperando archivo...</pre>
+  </div>
+
+  <script>
+    let datosSeleccionados = '';  // Para almacenar los datos extraídos del primer archivo
+    let contenidoOriginal = '';  // Para almacenar el contenido del segundo archivo
+    let contenidoModificado = '';  // Para almacenar el contenido modificado
+    let resultadosBusqueda = []; // Para almacenar las líneas encontradas
+
+    // Procesar y buscar el código en el primer archivo
+    function buscarCodigo() {
+      const archivo1 = document.getElementById('fileInput1').files[0];
+      const codigo = document.getElementById('codigoInput').value;
+      if (!archivo1 || !codigo) return alert('Por favor, cargue el primer archivo y ingrese el código.');
+
+      const lector1 = new FileReader();
+      lector1.onload = function (e) {
+        const lineas = e.target.result.split('\n');
+        resultadosBusqueda = []; // Limpiar resultados previos
+        let encontrado = false;
+
+        // Buscar el código en el archivo y almacenar las líneas encontradas
+        for (let i = 0; i < lineas.length; i++) {
+          if (lineas[i].includes(codigo)) {
+            resultadosBusqueda.push(lineas[i]); // Almacenar las líneas con el código
+            encontrado = true;
+          }
+        }
+
+        // Mostrar los resultados de búsqueda
+        const listaResultados = document.getElementById('resultados');
+        listaResultados.innerHTML = ''; // Limpiar resultados anteriores
+        if (resultadosBusqueda.length > 0) {
+          listaResultados.classList.remove('hidden');
+          resultadosBusqueda.forEach((resultado, index) => {
+            const item = document.createElement('li');
+            item.classList.add('list-group-item');
+            item.textContent = resultado;
+            item.onclick = function () {
+              seleccionarLinea(index); // Seleccionar la línea al hacer clic
+            };
+            listaResultados.appendChild(item);
+          });
+        } else {
+          alert('No se encontró el código en el archivo.');
+          listaResultados.classList.add('hidden');
+        }
+      };
+      lector1.readAsText(archivo1);
+    }
+
+    // Seleccionar una línea de los resultados
+    function seleccionarLinea(index) {
+      datosSeleccionados = resultadosBusqueda[index];
+      alert('Línea seleccionada: ' + datosSeleccionados);
+      document.getElementById('fileInput2Container').classList.remove('hidden'); // Mostrar la opción de cargar el segundo archivo
+    }
+
+    // Modificar las líneas con el código encontrado en el primer archivo
+    function modificarLineas() {
+      const lineas = contenidoOriginal.split('\n');
+
+      // Asegura que existan al menos 25 líneas
+      while (lineas.length < 25) {
+        lineas.push(''); // Rellenar con líneas vacías si faltan
+      }
+
+      // Tomar los primeros 4 dígitos y los últimos 36 caracteres de la línea seleccionada
+      const pluviometro = datosSeleccionados.substring(0, 4); // Primeros 4 dígitos
+      const apiKey = datosSeleccionados.slice(-36); // Últimos 36 caracteres
+
+      // Buscar las líneas de 'pluviometro' y 'api_key' y modificarlas
+      for (let i = 0; i < lineas.length; i++) {
+        if (lineas[i].includes('const char pluviometro[]')) {
+          lineas[i] = 'const char pluviometro[] = "' + pluviometro + '";';
+        }
+        if (lineas[i].includes('const char api_key[]')) {
+          lineas[i] = 'const char api_key[] = "' + apiKey + '";';
+        }
+      }
+
+      // Unir las líneas modificadas
+      contenidoModificado = lineas.join('\n');
+      document.getElementById('output').textContent = contenidoModificado;
+      document.getElementById('btnDescargar').classList.remove('hidden');
+    }
+
+    // Cargar y modificar el segundo archivo
+    document.getElementById('fileInput2').addEventListener('change', function (event) {
+      const archivo2 = event.target.files[0];
+      if (!archivo2) return;
+
+      const lector2 = new FileReader();
+      lector2.onload = function (e) {
+        contenidoOriginal = e.target.result;
+        modificarLineas();
+      };
+      lector2.readAsText(archivo2);
+    });
+
+    // Copiar el contenido modificado al portapapeles
+    function copiarTexto() {
+      const texto = contenidoModificado;
+      const areaTexto = document.createElement('textarea');
+      areaTexto.value = texto;
+      document.body.appendChild(areaTexto);
+      areaTexto.select();
+      document.execCommand('copy');
+      document.body.removeChild(areaTexto);
+      alert('¡Texto copiado al portapapeles!');
+    }
+  </script>
+</body>
+</html>

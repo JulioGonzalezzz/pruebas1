@@ -1,0 +1,176 @@
+#define TINY_GSM_MODEM_SIM800
+#include <TinyGsmClient.h>
+#include "esp_system.h"
+#include "driver/rtc_io.h"
+
+#define SerialMon Serial
+#define SerialAT  Serial1
+
+#define MODEM_RST      5
+#define MODEM_PWRKEY   4
+#define MODEM_POWER_ON 23
+#define MODEM_TX       27
+#define MODEM_RX       26
+
+#define LED_GPIO       13
+#define LED_ON         HIGH
+#define LED_OFF        LOW
+#define PIN_SENSOR     14  // ✅ Usamos GPIO14 con pull-up interno
+#define PIN_APN        32
+#define PIN_DEVPRO     35
+
+const char server[] = "estacion.siucomgt.com";
+const int port = 80;
+const char pluviometro[] = "xxxx";
+const char api_key[] = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx";
+const float cont_ml = 0.207;
+const char version[] = "pluviometro_A_v4";
+
+const char* apnClaro = "simbase";
+const char* apnTigo = "simbase";
+const char* apn;
+
+const char gprsUser[] = "";
+const char gprsPass[] = "";
+const char simPIN[] = "";
+
+TinyGsm modem(SerialAT);
+TinyGsmClient client(modem);
+
+volatile int pulseCount = 0;
+const unsigned long debounceInterval = 500;
+
+void IRAM_ATTR handlePulse() {
+  static unsigned long lastInterrupt = 0;
+  unsigned long currentInterrupt = millis();
+  if (currentInterrupt - lastInterrupt > debounceInterval) {
+    pulseCount++;
+    SerialMon.println("✅ Pulso detectado. Total: " + String(pulseCount));
+    lastInterrupt = currentInterrupt;
+  }
+}
+
+void setupModem() {
+  pinMode(PIN_DEVPRO, INPUT_PULLUP);
+  pinMode(MODEM_RST, OUTPUT);
+  digitalWrite(MODEM_RST, HIGH);
+  pinMode(MODEM_PWRKEY, OUTPUT);
+  pinMode(MODEM_POWER_ON, OUTPUT);
+  digitalWrite(MODEM_POWER_ON, HIGH);
+  digitalWrite(MODEM_PWRKEY, HIGH);
+  delay(100);
+  digitalWrite(MODEM_PWRKEY, LOW);
+  delay(1000);
+  digitalWrite(MODEM_PWRKEY, HIGH);
+  pinMode(LED_GPIO, OUTPUT);
+  digitalWrite(LED_GPIO, LED_OFF);
+}
+
+void setup() {
+  SerialMon.begin(115200);
+  delay(10);
+  setupModem();
+  SerialAT.begin(115200, SERIAL_8N1, MODEM_RX, MODEM_TX);
+
+  // ✅ GPIO14 soporta pull-up interno
+  pinMode(PIN_SENSOR, INPUT_PULLUP);
+  pinMode(PIN_APN, INPUT_PULLUP);
+
+  apn = (digitalRead(PIN_APN) == LOW) ? apnClaro : apnTigo;
+  SerialMon.println("✅ APN seleccionado: " + String(apn));
+  SerialMon.println("✅ Pluviometro: " + String(pluviometro) + ", Version: " + String(version));
+
+  esp_sleep_wakeup_cause_t wakeup_cause = esp_sleep_get_wakeup_cause();
+
+  if (wakeup_cause == ESP_SLEEP_WAKEUP_EXT0) {
+    SerialMon.println("✅ Despertado por pulso. Contando durante 10s...");
+    pulseCount = 1;
+    attachInterrupt(digitalPinToInterrupt(PIN_SENSOR), handlePulse, FALLING);
+    unsigned long startTime = millis();
+    while (millis() - startTime < 10000) {}
+    detachInterrupt(digitalPinToInterrupt(PIN_SENSOR));
+    enviarDatos(pulseCount);
+  } else if (wakeup_cause == ESP_SLEEP_WAKEUP_TIMER) {
+    SerialMon.println("⏰ Despertado por temporizador. Enviando cont_ml=0.000001");
+    enviarDatos(0);
+  }
+
+  SerialMon.println("😴 Preparado para dormir. Esperando próximo pulso o temporizador.");
+  esp_sleep_enable_ext0_wakeup(GPIO_NUM_14, 0);  // ✅ Cambiado a GPIO14
+  esp_sleep_enable_timer_wakeup(86400000000ULL);
+  //esp_sleep_enable_timer_wakeup(60000000ULL); // Para pruebas (1 minuto)
+  esp_deep_sleep_start();
+}
+
+void loop() {}
+
+void enviarDatos(int totalPulsos) {
+  SerialMon.println("🌐 Iniciando conexión para enviar datos...");
+  modem.restart();
+  if (strlen(simPIN) && modem.getSimStatus() != 3) modem.simUnlock(simPIN);
+
+  bool conectado = false;
+  const int maxIntentos = 2;
+  int intento = 0;
+
+  while (intento < maxIntentos && !conectado) {
+    intento++;
+    SerialMon.println("🔄 Intento " + String(intento));
+    if (modem.waitForNetwork(5000L)) {
+      SerialMon.println("✅ Red OK. Señal: " + String(modem.getSignalQuality()));
+      if (modem.gprsConnect(apn, gprsUser, gprsPass)) {
+        SerialMon.println("✅ GPRS conectado.");
+        conectado = true;
+      } else SerialMon.println("❌ Error GPRS intento " + String(intento));
+    } else SerialMon.println("❌ Red no encontrada intento " + String(intento));
+    if (!conectado) {
+      SerialMon.println("⏳ Esperando 5s antes de reintentar...");
+      delay(5000);
+    }
+  }
+
+  if (!conectado) {
+    SerialMon.println("❌ No conectado tras 3 intentos. Durmiendo...");
+    modem.poweroff();
+    digitalWrite(LED_GPIO, LED_OFF);
+    return;
+  }
+
+  if (totalPulsos > 4) {
+    totalPulsos = 1;
+  }
+
+  String contValue = (totalPulsos > 0) ? String(cont_ml * totalPulsos, 3) : "0.000001";
+
+  bool isDev = digitalRead(PIN_DEVPRO) == HIGH;
+  String resourcePath = isDev ? "/estacion/" : "/desarrollo/";
+  SerialMon.println(isDev ? "🧪 Modo desarrollo activado." : "✅ Modo producción activado.");
+
+  String resource = resourcePath + String(pluviometro) + "/inserta.php?api_key=" + String(api_key) + "&nombre=" + String(pluviometro) + "&cont_ml=" + contValue;
+
+  SerialMon.println("🌐 Enviando: " + resource);
+
+  if (!client.connect(server, port)) {
+    SerialMon.println("❌ Error servidor.");
+    modem.gprsDisconnect();
+    modem.poweroff();
+    digitalWrite(LED_GPIO, LED_OFF);
+    return;
+  }
+
+ client.print(String("GET ") + resource + " HTTP/1.1\r\nHost: " + server + "\r\nConnection: close\r\n\r\n");
+
+
+  unsigned long timeout = millis();
+  while (client.connected() && millis() - timeout < 10000L) {
+    while (client.available()) SerialMon.write(client.read());
+    timeout = millis();
+  }
+
+  client.stop();
+  SerialMon.println("✅ Datos enviados correctamente.");
+  modem.gprsDisconnect();
+  modem.poweroff();
+  digitalWrite(LED_GPIO, LED_OFF);
+  SerialMon.println("📴 Módem apagado.");
+}
